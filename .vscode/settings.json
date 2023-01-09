@@ -1,7 +1,0 @@
-{
-    "python.pythonPath": "/home/hoyun/miniconda3/envs/latest/bin/python",
-    "python.analysis.extraPaths": [
-        "/pds/pds172/hoyun1009/library",
-        "lib"
-    ],
-}
