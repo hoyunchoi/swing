@@ -5,14 +5,15 @@ $$ m_i \frac{d^2 \theta_i}{dt^2} = P_i - \gamma_i \frac{d \theta_i}{dt} + \sum_j
 - $P_i$: power of node $i$
 - $\gamma_i$: damping of node $i$
 - $m_i$: mass of node $i$
-- $\theta_i$: state of node $i$ $\left( \in (-\pi, \pi] \right)$
+- $\theta_i$: state of node $i$
 - $K$ : Adjacency matrix, weighted by coupling constant $K_{ij}$
 
-### Available options
+### Available options for `swing_solver.solve`
 - Can perform 1st, 2nd, 4th order Runge-Kutta methods
 - Support both float32(float), float64(double) precision
-- `default`: utilize $\sum_j K_{ij} \sin(\theta_j-\theta_i) = \cos(\theta_i) [K \sin(\theta)]_i - \sin(\theta_i) [K \cos(\theta)]_i$
-- `original`: Naive implementation of swing equation with adjacency matrix
+- `default`: Compiled with **jit**. Utilize $\sum_j K_{ij} \sin(\theta_j-\theta_i) = \cos(\theta_i) [K \sin(\theta)]_i - \sin(\theta_i) [K \cos(\theta)]_i$
+- `original`: Compiled with **jit**. UNaive implementation of swing equation with adjacency matrix
+- `cpp`: similar to `original.py` written in c++. The compiled executable is located in `solver/simulation.out`.
 - `sparse`: Use sparse matrix representation on `default.py`
 - `gpu`: Use GPU on `default.py` by **pytorch**
 - `gpu_sparse`: Use GPU and sparse matrix representation on `default.py` by **pytorch**
@@ -22,4 +23,12 @@ $$ m_i \frac{d^2 \theta_i}{dt^2} = P_i - \gamma_i \frac{d \theta_i}{dt} + \sum_j
 ### Result
 | ![](timeit.svg) |
 | :-------------: |
-| Simulation time of each solvers. The fastest solver differs depending on the size of the network. |
+| Simulation time for 100 steps of 4th order Runge-Kutta method.|
+
+**Note**
+- The fastest solver differs depending on the size of the network.
+- For very small network ($N<100$), naive implementation (original) may be better
+- cpp: bottleneck of disk IO until $N=1000$ for communication between python and cpp executable.
+- gpu: bottleneck of memory copying between CPU and GPU until $N=1000$
+- gpu_sparse: bottleneck of memory copying between CPU and GPU until $N=3162$
+- gpu_scatter: bottleneck of memory copying between CPU and GPU until $N=31622$

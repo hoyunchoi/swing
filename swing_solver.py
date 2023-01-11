@@ -25,94 +25,7 @@ def directed2undirected(
     return torch.tensor(np.concatenate([edge_list, edge_list[:, [1, 0]]]), device=device).T  # type: ignore
 
 
-def _step_solve(
-    solver_name: str,
-    weighted_adjacency_matrix: arr | sparse,
-    phase: arr,
-    dphase: arr,
-    params: arr,
-    dts: arr,
-) -> list[arr]:
-    if "sparse" in solver_name:
-        solver_module = solver.sparse
-        weighted_adjacency_matrix = scipy.sparse.coo_matrix(weighted_adjacency_matrix)
-    elif "original" in solver_name:
-        solver_module = solver.original
-    else:
-        solver_module = solver.default
-
-    step_solver: Callable[[arr, arr, arr], tuple[arr, arr]]
-    if "rk1" in solver_name:
-        step_solver = partial(solver_module.rk1, weighted_adjacency_matrix, params)
-    elif "rk2" in solver_name:
-        step_solver = partial(solver_module.rk2, weighted_adjacency_matrix, params)
-    elif "rk4" in solver_name:
-        step_solver = partial(solver_module.rk4, weighted_adjacency_matrix, params)
-    else:
-        raise ValueError(f"No such solver: {solver_name}")
-
-    trajectory = [cast(arr, np.stack([phase, dphase]))]
-    for dt in dts:
-        phase, dphase = step_solver(phase, dphase, np.array(dt, dtype=params.dtype))
-        trajectory.append(cast(arr, np.stack([phase, dphase])))
-    return trajectory
-
-
-def _step_solve_gpu(
-    solver_name: str,
-    weighted_adjacency_matrix: tensor,
-    phase: tensor,
-    dphase: tensor,
-    params: tensor,
-    dts: list[float],
-) -> list[tensor]:
-    if "sparse" in solver_name:
-        weighted_adjacency_matrix = weighted_adjacency_matrix.to_sparse_coo()
-
-    step_solver: Callable[[tensor, tensor, float], tuple[tensor, tensor]]
-    if "rk1" in solver_name:
-        step_solver = partial(solver.gpu.rk1, weighted_adjacency_matrix, params)
-    elif "rk2" in solver_name:
-        step_solver = partial(solver.gpu.rk2, weighted_adjacency_matrix, params)
-    elif "rk4" in solver_name:
-        step_solver = partial(solver.gpu.rk4, weighted_adjacency_matrix, params)
-    else:
-        raise ValueError(f"No such solver: {solver_name}")
-
-    trajectory = [torch.stack([phase, dphase])]
-    for dt in dts:
-        phase, dphase = step_solver(phase, dphase, dt)
-        trajectory.append(torch.stack([phase, dphase]))
-    return trajectory
-
-
-def _step_solve_gpu_scatter(
-    solver_name: str,
-    edge_list: torch.LongTensor,
-    weights: tensor,
-    phase: tensor,
-    dphase: tensor,
-    params: tensor,
-    dts: list[float],
-) -> list[tensor]:
-    step_solver: Callable[[tensor, tensor, float], tuple[tensor, tensor]]
-    if "rk1" in solver_name:
-        step_solver = partial(solver.gpu_scatter.rk1, edge_list, weights, params)
-    elif "rk2" in solver_name:
-        step_solver = partial(solver.gpu_scatter.rk2, edge_list, weights, params)
-    elif "rk4" in solver_name:
-        step_solver = partial(solver.gpu_scatter.rk4, edge_list, weights, params)
-    else:
-        raise ValueError(f"No such solver: {solver_name}")
-
-    trajectory = [torch.stack([phase, dphase])]
-    for dt in dts:
-        phase, dphase = step_solver(phase, dphase, dt)
-        trajectory.append(torch.stack([phase, dphase]))
-    return trajectory
-
-
-def _step_solve_cpp(
+def step_solve_cpp(
     solver_name: str,
     edge_list: npt.NDArray[np.int64],
     weights: arr,
@@ -172,6 +85,99 @@ def _step_solve_cpp(
     return cast(arr, trajectory.reshape(-1, 2, num_nodes))
 
 
+def step_solve(
+    solver_name: str,
+    weighted_adjacency_matrix: arr | sparse,
+    phase: arr,
+    dphase: arr,
+    params: arr,
+    dts: arr,
+) -> list[arr]:
+    if "sparse" in solver_name:
+        solver_module = solver.sparse
+        weighted_adjacency_matrix = scipy.sparse.coo_matrix(weighted_adjacency_matrix)
+    elif "original" in solver_name:
+        solver_module = solver.original
+    else:
+        solver_module = solver.default
+
+    step_solver: Callable[[arr, arr, arr], tuple[arr, arr]]
+    if "rk1" in solver_name:
+        step_solver = partial(solver_module.rk1, weighted_adjacency_matrix, params)
+    elif "rk2" in solver_name:
+        step_solver = partial(solver_module.rk2, weighted_adjacency_matrix, params)
+    elif "rk4" in solver_name:
+        step_solver = partial(solver_module.rk4, weighted_adjacency_matrix, params)
+    else:
+        raise ValueError(f"No such solver: {solver_name}")
+
+    trajectory = [cast(arr, np.stack([phase, dphase]))]
+    for dt in dts:
+        phase, dphase = step_solver(phase, dphase, np.array(dt, dtype=params.dtype))
+        trajectory.append(cast(arr, np.stack([phase, dphase])))
+    return trajectory
+
+
+def step_solve_gpu(
+    solver_name: str,
+    weighted_adjacency_matrix: tensor,
+    phase: tensor,
+    dphase: tensor,
+    params: tensor,
+    dts: list[float],
+) -> torch.Tensor:
+    if "sparse" in solver_name:
+        weighted_adjacency_matrix = weighted_adjacency_matrix.to_sparse_coo()
+
+    step_solver: Callable[[tensor, tensor, float], tuple[tensor, tensor]]
+    if "rk1" in solver_name:
+        step_solver = partial(solver.gpu.rk1, weighted_adjacency_matrix, params)
+    elif "rk2" in solver_name:
+        step_solver = partial(solver.gpu.rk2, weighted_adjacency_matrix, params)
+    elif "rk4" in solver_name:
+        step_solver = partial(solver.gpu.rk4, weighted_adjacency_matrix, params)
+    else:
+        raise ValueError(f"No such solver: {solver_name}")
+
+    trajectory = torch.zeros(
+        (len(dts) + 1, 2, len(phase)), dtype=phase.dtype, device=phase.device
+    )
+    trajectory[0] = torch.stack([phase, dphase])
+    for i, dt in enumerate(dts):
+        phase, dphase = step_solver(phase, dphase, dt)
+        trajectory[i + 1] = torch.stack([phase, dphase])
+    return trajectory
+
+
+def step_solve_gpu_scatter(
+    solver_name: str,
+    edge_list: torch.LongTensor,
+    weights: tensor,
+    phase: tensor,
+    dphase: tensor,
+    params: tensor,
+    dts: list[float],
+) -> torch.Tensor:
+    step_solver: Callable[[tensor, tensor, float], tuple[tensor, tensor]]
+    if "rk1" in solver_name:
+        step_solver = partial(solver.gpu_scatter.rk1, edge_list, weights, params)
+    elif "rk2" in solver_name:
+        step_solver = partial(solver.gpu_scatter.rk2, edge_list, weights, params)
+    elif "rk4" in solver_name:
+        step_solver = partial(solver.gpu_scatter.rk4, edge_list, weights, params)
+    else:
+        raise ValueError(f"No such solver: {solver_name}")
+
+    trajectory = torch.zeros(
+        (len(dts) + 1, 2, len(phase)), dtype=phase.dtype, device=phase.device
+    )
+    trajectory[0] = torch.stack([phase, dphase])
+    for i, dt in enumerate(dts):
+        phase, dphase = step_solver(phase, dphase, dt)
+        trajectory[i + 1] = torch.stack([phase, dphase])
+    return trajectory
+
+
 @overload
 def solve(
     solver_name: str,
@@ -214,7 +220,8 @@ def solve(
     Solve swing equation:
     m_i * d^2 theta_i / dt^2 = P_i - gamma_i * d theta_i/dt + sum_j K_ij * A_ij * sin(theta_j-theta_i)
 
-    solver_name: How to solve, ex) "rk4_gpu_scatter"
+    solver_name: How to solve.
+    e.g., RK4: "rk4", "rk4_cpp", "rk4_original", "rk4_sparse", "rk4_gpu", "rk4_gpu_sparse", "rk4_gpu_scatter"
     graph: graph that swing equation evolves on
     weights: (E, ) coupling constant of edges on graph
     initial_phase: (N, ) initial phase of nodes on graph, where N = graph.number_of_nodes()
@@ -226,7 +233,7 @@ def solve(
     Return: (S+1, 2, N), (phase, dphase) of all nodes at each time step
     """
     if "cpp" in solver_name:
-        trajectory = _step_solve_cpp(
+        trajectory = step_solve_cpp(
             solver_name,
             get_edge_list(graph),
             weights,
@@ -247,7 +254,7 @@ def solve(
 
         if "scatter" in solver_name:
             edge_list = get_edge_list(graph)
-            trajectory = _step_solve_gpu_scatter(
+            trajectory = step_solve_gpu_scatter(
                 solver_name,
                 directed2undirected(edge_list, device=device),
                 torch.tensor(np.concatenate([weights, weights]), device=device),
@@ -258,7 +265,7 @@ def solve(
             )
         else:
             weighted_adjacency_matrix = get_weighted_adjacency_matrix(graph, weights)
-            trajectory = _step_solve_gpu(
+            trajectory = step_solve_gpu(
                 solver_name,
                 torch.tensor(weighted_adjacency_matrix, device=device),
                 initial_phase_torch,
@@ -266,10 +273,11 @@ def solve(
                 params_torch,
                 dts_list,
             )
-        return np.array([t.cpu().numpy() for t in trajectory])
+        return trajectory.cpu().numpy()
+
     else:
         weighted_adjacency_matrix = get_weighted_adjacency_matrix(graph, weights)
-        trajectory = _step_solve(
+        trajectory = step_solve(
             solver_name,
             weighted_adjacency_matrix,
             initial_phase,
