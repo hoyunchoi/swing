@@ -13,7 +13,8 @@ $$ m_i \frac{d^2 \theta_i}{dt^2} = P_i - \gamma_i \frac{d \theta_i}{dt} + \sum_j
 - Support both float32(float), float64(double) precision
 - `default`: Compiled with **jit**. Utilize $\sum_j K_{ij} \sin(\theta_j-\theta_i) = \cos(\theta_i) [K \sin(\theta)]_i - \sin(\theta_i) [K \cos(\theta)]_i$
 - `original`: Compiled with **jit**. UNaive implementation of swing equation with adjacency matrix
-- `cpp`: similar to `original.py` written in c++. The compiled executable is located in `solver/simulation.out`.
+- `cpp`: similar to `default.py` written in c++.
+- `cpp_original`: similar to `original.py` written in c++.
 - `sparse`: Use sparse matrix representation on `default.py`
 - `gpu`: Use GPU on `default.py` by **pytorch**
 - `gpu_sparse`: Use GPU and sparse matrix representation on `default.py` by **pytorch**
@@ -28,7 +29,7 @@ $$ m_i \frac{d^2 \theta_i}{dt^2} = P_i - \gamma_i \frac{d \theta_i}{dt} + \sum_j
 **Note**
 - The fastest solver differs depending on the size of the network.
 - For very small network ($N<100$), naive implementation (original) may be better
-- cpp: bottleneck of disk IO until $N=1000$ for communication between python and cpp executable.
+- cpp: The pure runtime of solving swing equation.
 - gpu: bottleneck of memory copying between CPU and GPU until $N=1000$
 - gpu_sparse: bottleneck of memory copying between CPU and GPU until $N=3162$
 - gpu_scatter: bottleneck of memory copying between CPU and GPU until $N=31622$

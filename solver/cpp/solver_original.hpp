@@ -1,13 +1,8 @@
 /*
 Solve swing equation
 
-m_i * d^2 theta_i / dt^2
-= P_i - gamma_i * d theta_i/dt + sum_j K_ij * A_ij * sin(theta_j-theta_i)
-
-
-Calculate interaction term as follows:
-sum_j K_ij * A_ij * sin(theta_j-theta_i)
-= cos(theta_i) * [KA @ sin(theta)]_i - sin(theta_i) * [KA @ cos(theta)]_i
+m_i * d^2 theta_i / dt^2 = P_i - gamma_i * d theta_i/dt + sum_j K_ij * A_ij *
+sin(theta_j-theta_i)
 */
 
 #pragma once
@@ -26,7 +21,7 @@ using mat = std::vector<std::vector<T>>;
 namespace Swing {
 
 template <typename T>
-std::vector<T> get_acceleration(
+std::vector<T> get_acceleration_original(
     const std::vector<WeightedEdge<T>>& t_weighted_edge_list,
     const std::vector<std::vector<T>>& t_state,
     const std::vector<std::vector<T>>& t_params
@@ -40,37 +35,28 @@ std::vector<T> get_acceleration(
     using namespace LinearAlgebra;
 
     const Count num_nodes = t_state[0].size();
+    std::vector<T> force(num_nodes, 0.0);
 
-    std::vector<T> sin_phase(num_nodes);
-    std::vector<T> cos_phase(num_nodes);
+    // P - gamma * velocity
     for (Node node = 0; node < num_nodes; ++node) {
-        sin_phase[node] = std::sin(t_state[0][node]);
-        cos_phase[node] = std::cos(t_state[0][node]);
+        force[node] = t_params[0][node] - t_params[1][node] * t_state[1][node];
     }
 
-    std::vector<T> sin_phase_adj(num_nodes, 0.0);
-    std::vector<T> cos_phase_adj(num_nodes, 0.0);
-    for (const WeightedEdge<T> weighted_edge : t_weighted_edge_list) {
+    for (const WeightedEdge<T>& weighted_edge : t_weighted_edge_list) {
         const Node node1 = weighted_edge.node1;
         const Node node2 = weighted_edge.node2;
         const T weight = weighted_edge.weight;
 
-        sin_phase_adj[node1] += weight * sin_phase[node2];
-        sin_phase_adj[node2] += weight * sin_phase[node1];
-        cos_phase_adj[node1] += weight * cos_phase[node2];
-        cos_phase_adj[node2] += weight * cos_phase[node1];
+        // Calculate interaction: KA sin(theta_j - theta_i)
+        const T interaction = weight * std::sin(t_state[0][node2] - t_state[0][node1]);
+
+        // Use symmetric property
+        force[node1] += interaction;
+        force[node2] -= interaction;
     }
 
-    std::vector<T> force(num_nodes);
+    // a = F / m
     for (Node node = 0; node < num_nodes; ++node) {
-        // P - gamma * velocity
-        force[node] = t_params[0][node] - t_params[1][node] * t_state[1][node];
-
-        // Interactions
-        force[node] += cos_phase[node] * sin_phase_adj[node];
-        force[node] -= sin_phase[node] * cos_phase_adj[node];
-
-        // a = F / m
         force[node] /= t_params[2][node];
     }
 
@@ -78,7 +64,7 @@ std::vector<T> get_acceleration(
 }
 
 template <typename T>
-std::vector<std::vector<T>> step_rk1(
+std::vector<std::vector<T>> step_rk1_original(
     const std::vector<WeightedEdge<T>>& t_weighted_edge_list,
     const std::vector<std::vector<T>>& t_state,
     const std::vector<std::vector<T>>& t_params,
@@ -88,14 +74,14 @@ std::vector<std::vector<T>> step_rk1(
 
     const std::vector<T> velocity = t_state[1];
     const std::vector<T> acceleration =
-        get_acceleration(t_weighted_edge_list, t_state, t_params);
+        get_acceleration_original(t_weighted_edge_list, t_state, t_params);
 
     // Result
     return {t_state[0] + dt * velocity, t_state[1] + dt * acceleration};
 }
 
 template <typename T>
-std::vector<std::vector<T>> step_rk2(
+std::vector<std::vector<T>> step_rk2_original(
     const std::vector<WeightedEdge<T>>& t_weighted_edge_list,
     const std::vector<std::vector<T>>& t_state,
     const std::vector<std::vector<T>>& t_params,
@@ -110,14 +96,14 @@ std::vector<std::vector<T>> step_rk2(
     // Stage 1
     const std::vector<T> velocity1 = t_state[1];
     const std::vector<T> acceleration1 =
-        get_acceleration(t_weighted_edge_list, t_state, t_params);
+        get_acceleration_original(t_weighted_edge_list, t_state, t_params);
 
     // Stage 2
     temp_state[0] = t_state[0] + dt * velocity1;
     temp_state[1] = t_state[1] + dt * acceleration1;
     const std::vector<T> velocity2 = temp_state[1];
     const std::vector<T> acceleration2 =
-        get_acceleration(t_weighted_edge_list, temp_state, t_params);
+        get_acceleration_original(t_weighted_edge_list, temp_state, t_params);
 
     // Result
     const std::vector<T> velocity = 0.5 * (velocity1 + velocity2);
@@ -126,7 +112,7 @@ std::vector<std::vector<T>> step_rk2(
 }
 
 template <typename T>
-std::vector<std::vector<T>> step_rk4(
+std::vector<std::vector<T>> step_rk4_original(
     const std::vector<WeightedEdge<T>>& t_weighted_edge_list,
     const std::vector<std::vector<T>>& t_state,
     const std::vector<std::vector<T>>& t_params,
@@ -141,28 +127,28 @@ std::vector<std::vector<T>> step_rk4(
     // Stage 1
     const std::vector<T> velocity1 = t_state[1];
     const std::vector<T> acceleration1 =
-        get_acceleration(t_weighted_edge_list, t_state, t_params);
+        get_acceleration_original(t_weighted_edge_list, t_state, t_params);
 
     // Stage 2
     temp_state[0] = t_state[0] + 0.5 * dt * velocity1;
     temp_state[1] = t_state[1] + 0.5 * dt * acceleration1;
     const std::vector<T> velocity2 = temp_state[1];
     const std::vector<T> acceleration2 =
-        get_acceleration(t_weighted_edge_list, temp_state, t_params);
+        get_acceleration_original(t_weighted_edge_list, temp_state, t_params);
 
     // Stage 3
     temp_state[0] = t_state[0] + 0.5 * dt * velocity2;
     temp_state[1] = t_state[1] + 0.5 * dt * acceleration2;
     const std::vector<T> velocity3 = temp_state[1];
     const std::vector<T> acceleration3 =
-        get_acceleration(t_weighted_edge_list, temp_state, t_params);
+        get_acceleration_original(t_weighted_edge_list, temp_state, t_params);
 
     // Stage 4
     temp_state[0] = t_state[0] + dt * velocity3;
     temp_state[1] = t_state[1] + dt * acceleration3;
     const std::vector<T> velocity4 = temp_state[1];
     const std::vector<T> acceleration4 =
-        get_acceleration(t_weighted_edge_list, temp_state, t_params);
+        get_acceleration_original(t_weighted_edge_list, temp_state, t_params);
 
     // Result
     const std::vector<T> velocity =
@@ -174,7 +160,7 @@ std::vector<std::vector<T>> step_rk4(
 }
 
 template <typename T>
-std::vector<std::vector<T>> solve_rk1(
+std::vector<std::vector<T>> solve_rk1_original(
     const std::vector<WeightedEdge<T>>& t_weighted_edge_list,
     const std::vector<std::vector<T>>& t_initial_state,
     const std::vector<std::vector<T>>& t_params,
@@ -196,7 +182,7 @@ std::vector<std::vector<T>> solve_rk1(
 
     std::vector<std::vector<T>> state = t_initial_state;
     for (const auto& dt : t_dts) {
-        state = step_rk1(t_weighted_edge_list, state, t_params, dt);
+        state = step_rk1_original(t_weighted_edge_list, state, t_params, dt);
         trajectory.emplace_back(LinearAlgebra::flatten(state));
     }
 
@@ -204,7 +190,7 @@ std::vector<std::vector<T>> solve_rk1(
 }
 
 template <typename T>
-std::vector<std::vector<T>> solve_rk2(
+std::vector<std::vector<T>> solve_rk2_original(
     const std::vector<WeightedEdge<T>>& t_weighted_edge_list,
     const std::vector<std::vector<T>>& t_initial_state,
     const std::vector<std::vector<T>>& t_params,
@@ -226,7 +212,7 @@ std::vector<std::vector<T>> solve_rk2(
 
     std::vector<std::vector<T>> state = t_initial_state;
     for (const auto& dt : t_dts) {
-        state = step_rk2(t_weighted_edge_list, state, t_params, dt);
+        state = step_rk2_original(t_weighted_edge_list, state, t_params, dt);
         trajectory.emplace_back(LinearAlgebra::flatten(state));
     }
 
@@ -234,7 +220,7 @@ std::vector<std::vector<T>> solve_rk2(
 }
 
 template <typename T>
-std::vector<std::vector<T>> solve_rk4(
+std::vector<std::vector<T>> solve_rk4_original(
     const std::vector<WeightedEdge<T>>& t_weighted_edge_list,
     const std::vector<std::vector<T>>& t_initial_state,
     const std::vector<std::vector<T>>& t_params,
@@ -256,7 +242,7 @@ std::vector<std::vector<T>> solve_rk4(
 
     std::vector<std::vector<T>> state = t_initial_state;
     for (const auto& dt : t_dts) {
-        state = step_rk4(t_weighted_edge_list, state, t_params, dt);
+        state = step_rk4_original(t_weighted_edge_list, state, t_params, dt);
         trajectory.emplace_back(LinearAlgebra::flatten(state));
     }
 

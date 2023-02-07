@@ -1,7 +1,8 @@
 """
 Solve swing equation equation
 
-m_i * d^2 theta_i / dt^2 = P_i - gamma_i * d theta_i/dt + sum_j K_ij * A_ij * sin(theta_j-theta_i)
+m_i * d^2 theta_i / dt^2
+= P_i - gamma_i * d theta_i/dt + sum_j K_ij * A_ij * sin(theta_j-theta_i)
 
 Calculate interaction term as follows:
 sum_j K_ij * A_ij * sin(theta_j-theta_i)

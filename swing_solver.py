@@ -22,7 +22,9 @@ def directed2undirected(
 ) -> torch.LongTensor:
     """Get directed edge list of shape (E, 2),
     Return undirected edge index of shape (2, E), for torch_geometric"""
-    return torch.tensor(np.concatenate([edge_list, edge_list[:, [1, 0]]]), device=device).T  # type: ignore
+    return torch.tensor(
+        np.concatenate([edge_list, edge_list[:, [1, 0]]]), device=device
+    ).T  # pyright: ignore
 
 
 def step_solve_cpp(
@@ -51,8 +53,8 @@ def step_solve_cpp(
     if not EXECUTABLE.exists():
         subprocess.run(
             shlex.split(
-                f"g++ -O2 -flto -std=c++17 -o {EXECUTABLE} "
-                f"{SOLVER_DIR}/cpp/main.cpp"
+                f"g++ -O2 -flto=auto -std=c++17 -o {EXECUTABLE} "
+                f"{SOLVER_DIR}/cpp/main_python.cpp"
             )
         )
 
@@ -81,8 +83,8 @@ def step_solve_cpp(
     )
     ARG_FILE.unlink()
 
-    trajectory = np.array(result.strip().split(), dtype=dts.dtype)
-    return cast(arr, trajectory.reshape(-1, 2, num_nodes))
+    trajectory = cast(arr, np.array(result.strip().split(), dtype=dts.dtype))
+    return trajectory.reshape(-1, 2, num_nodes)
 
 
 def step_solve(
