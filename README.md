@@ -24,7 +24,7 @@ $$ m_i \frac{d^2 \theta_i}{dt^2} = P_i - \gamma_i \frac{d \theta_i}{dt} + \sum_j
 ### Result
 | ![](timeit.svg) |
 | :-: |
-| Simulation time for 100 steps of 4th order Runge-Kutta method. (The figure is not updated. See raw image at timeit.svg)|
+| Simulation time for 100 steps of 4th order Runge-Kutta method.|
 
 **Note**
 - The fastest solver differs depending on the number of nodes and number of edges.
